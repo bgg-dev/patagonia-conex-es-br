@@ -9,6 +9,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        travel: "bg-primary text-primary-foreground hover:bg-primary/90 rounded-full shadow-none",
+        booking: "bg-booking text-primary-foreground hover:bg-booking/90 rounded-full shadow-none",
         default: "bg-primary text-primary-foreground shadow hover:bg-primary/90",
         destructive: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
         outline:
