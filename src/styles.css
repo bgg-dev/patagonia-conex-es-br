@@ -76,6 +76,16 @@
 .route-line::before,.route-line::after { content: ''; position: absolute; top: -3px; width: 7px; height: 7px; border: 1px solid var(--border); background: var(--card); border-radius: 50%; }
 .route-line::after { right: 0; }
 .enter { animation: enter .65s ease-out both; }
+.planner-title { font-size: 38px; line-height: 1.25; font-weight: 750; }
+.planner-label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+.planner-control { height: 48px; border-radius: 12px; background: var(--background); font-size: 14px; box-shadow: none; }
+.planner-control[aria-invalid="true"] { border-color: var(--destructive); }
+.date-input { padding-right: 44px; color-scheme: light; min-width: 0; }
+.date-input::-webkit-calendar-picker-indicator { display: none; }
+.step-number { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; color: var(--muted-foreground); font-size: 11px; flex-shrink: 0; }
+.step-active { color: var(--primary); background: var(--secondary); border-color: var(--secondary); }
+.summary-image { width: 100%; height: 210px; object-fit: cover; border-radius: 1.6rem; }
+.result-flow { scroll-margin-top: 25px; }
 @keyframes enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 767px) {
  .page-width { width: calc(100% - 36px); }
@@ -83,5 +93,9 @@
  .section-title { font-size: 27px; }
  .brand { font-size: 21px; }
  .destination-image { height: 220px; }
+ .planner-title { font-size: 29px; }
+ .journey-steps { gap: 8px; }
+ .journey-steps li { gap: 5px; font-size: 11px; }
+ .planner-form { border-radius: 2rem; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .enter { animation: none; } }

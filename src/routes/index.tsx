@@ -1,73 +1,128 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { ArrowDown, ArrowRight, ArrowUpRight, Mountain, Plane, MapPin, CalendarDays, Check, Leaf, Globe2, Bus, Info, Compass, Menu, X } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowDown, ArrowRight, ArrowUpRight, Mountain, Plane, CalendarDays, MapPin, Info, Leaf, ChevronDown, ChevronUp, BedDouble, Users, Check, Pencil, Compass } from 'lucide-react';
+import { useRef, useState, type FormEvent } from 'react';
+import { format, parseISO, differenceInCalendarDays } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { TripDateField } from '@/components/trip-date-field';
 import { bookingUrl, destinations } from '@/lib/destinations';
+import { flightGuidance, origins, tripSchema, type Trip } from '@/lib/trip';
 
 export const Route = createFileRoute('/')({
   head: () => ({ meta: [
-    { title: 'Patagonia_br — De São Paulo e Rio à Patagônia Argentina' },
-    { name: 'description', content: 'Planeje sua viagem à Patagônia Argentina saindo de GRU ou GIG. Compare conexões, descubra quatro destinos e encontre sua hospedagem.' },
-    { property: 'og:title', content: 'Patagonia_br — Sua viagem à Patagônia começa aqui' },
-    { property: 'og:description', content: 'De São Paulo e Rio de Janeiro a Bariloche, Ushuaia, El Calafate e Puerto Madryn: conexões e estadias para seu roteiro.' },
+    { title: 'Planeje sua viagem à Patagônia — Patagonia_br' },
+    { name: 'description', content: 'Escolha origem, destino, datas e hóspedes. Conheça seu destino na Patagônia Argentina, veja orientações de voo e busque hospedagem na Booking.com.' },
+    { property: 'og:title', content: 'Sua viagem à Patagônia começa aqui — Patagonia_br' },
+    { property: 'og:description', content: 'De São Paulo ou do Rio à Patagônia: planeje o roteiro, entenda as conexões e encontre sua hospedagem.' },
     { property: 'og:type', content: 'website' },
     { name: 'twitter:card', content: 'summary_large_image' },
   ] }),
   component: Index,
 });
 
+type Draft = Omit<Trip, 'adults' | 'children' | 'rooms'> & { adults: string; children: string; rooms: string };
+const initialDraft: Draft = { origin: 'GRU', destination: 'BRC', departure: '', returnDate: '', adults: '2', children: '0', rooms: '1' };
+const dateLabel = (value: string) => format(parseISO(value), 'dd MMM yyyy', { locale: ptBR });
+
 function Index() {
-  const [origin, setOrigin] = useState<'GRU' | 'GIG'>('GRU');
-  const [menuOpen, setMenuOpen] = useState(false);
-  const scrollTo = (id: string) => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); setMenuOpen(false); };
-  return (
-    <>
-      <header className="border-b border-border bg-card">
-        <div className="page-width flex h-20 items-center justify-between gap-4">
-          <a href="#" className="brand flex items-center gap-2.5" aria-label="Patagonia_br, início"><Mountain className="size-8 text-primary" strokeWidth={1.8} />Patagonia<span className="-ml-2 text-primary">_br</span></a>
-          <nav className="hidden items-center gap-7 md:flex" aria-label="Navegação principal">
-            <Button variant="ghost" onClick={() => scrollTo('conexoes')} className="px-0 font-medium text-muted-foreground">Como chegar</Button>
-            <Button variant="ghost" onClick={() => scrollTo('destinos')} className="px-0 font-medium text-muted-foreground">Destinos</Button>
-            <Button variant="travel" className="h-10 px-5" onClick={() => scrollTo('destinos')}>Encontre sua estadia <ArrowUpRight /></Button>
-          </nav>
-          <Button variant="ghost" size="icon" className="md:hidden" aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</Button>
+  const [draft, setDraft] = useState<Draft>(initialDraft);
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [expanded, setExpanded] = useState(false);
+  const resultRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const update = <K extends keyof Draft>(key: K, value: Draft[K]) => {
+    setDraft(previous => ({ ...previous, [key]: value }));
+    setErrors({});
+    setTrip(null);
+    setExpanded(false);
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const numberValue = (value: string) => value.trim() === '' ? NaN : Number(value);
+    const result = tripSchema.safeParse({ ...draft, adults: numberValue(draft.adults), children: numberValue(draft.children), rooms: numberValue(draft.rooms) });
+    if (!result.success) {
+      const nextErrors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const field = String(issue.path[0]);
+        if (!nextErrors[field]) nextErrors[field] = issue.message;
+      }
+      setErrors(nextErrors);
+      setTrip(null);
+      requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      return;
+    }
+    setErrors({});
+    setTrip(result.data);
+    setExpanded(false);
+    requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }));
+  };
+  const destination = trip ? destinations.find(d => d.code === trip.destination) : undefined;
+  const guidance = trip ? flightGuidance(trip.origin, trip.destination) : undefined;
+  const nights = trip ? differenceInCalendarDays(parseISO(trip.returnDate), parseISO(trip.departure)) : 0;
+  const edit = () => { formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); formRef.current?.querySelector<HTMLElement>('[role="combobox"]')?.focus({ preventScroll: true }); };
+
+  return <>
+    <header className="border-b border-border bg-card">
+      <div className="page-width flex h-18 items-center justify-between gap-4">
+        <a href="#inicio" className="brand flex items-center gap-2.5" aria-label="Patagonia_br, início"><Mountain className="size-8 text-primary" strokeWidth={1.8} /><span>Patagonia<span className="text-primary">_br</span></span></a>
+        <span className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex"><MapPin className="size-3.5 text-primary" /> Do Brasil à Patagônia Argentina</span>
+      </div>
+    </header>
+    <main id="inicio" className="page-width pb-12">
+      <section className="enter pb-7 pt-9 text-center md:pt-11">
+        <p className="eyebrow mb-3 text-primary">SEU ROTEIRO, DO SEU JEITO</p>
+        <h1 className="planner-title">Sua viagem à <span className="text-primary">Patagônia</span> começa aqui</h1>
+        <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">Escolha de onde sair, para onde ir e quando viajar.<br className="hidden sm:block" /> Veja como chegar e encontre sua hospedagem.</p>
+      </section>
+      <ol className="journey-steps mx-auto mb-6 flex max-w-xl items-center justify-between" aria-label="Etapas da viagem">
+        {['Sua viagem', 'Destino', 'Voos', 'Hotéis'].map((step, index) => <li key={step} className="flex items-center gap-2 text-xs"><span className={`step-number ${index === 0 || trip ? 'step-active' : ''}`}>{index === 0 && trip ? <Check className="size-3.5" /> : index + 1}</span><span className={index === 0 || trip ? 'font-medium text-foreground' : 'text-muted-foreground'}>{step}</span></li>)}
+      </ol>
+      <form ref={formRef} noValidate onSubmit={submit} className="travel-card planner-form p-6 md:p-8" aria-label="Planejar viagem">
+        <div className="mb-5 flex items-center gap-2 text-sm font-semibold"><Compass className="size-4 text-primary" /> Para onde vamos?</div>
+        <div className="grid gap-x-5 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="min-w-0"><label className="planner-label" htmlFor="origin">Origem</label><Select value={draft.origin} onValueChange={value => { if (value === 'GRU' || value === 'GIG') update('origin', value); }}><SelectTrigger id="origin" className="planner-control"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(origins).map(([code, name]) => <SelectItem key={code} value={code}>{name}</SelectItem>)}</SelectContent></Select></div>
+          <div className="min-w-0"><label className="planner-label" htmlFor="destination">Destino</label><Select value={draft.destination} onValueChange={value => { if (value === 'BRC' || value === 'USH' || value === 'FTE' || value === 'PMY') update('destination', value); }}><SelectTrigger id="destination" className="planner-control"><SelectValue /></SelectTrigger><SelectContent>{destinations.map(d => <SelectItem key={d.code} value={d.code}>{d.name} ({d.code})</SelectItem>)}</SelectContent></Select></div>
+          <TripDateField id="departure" label="Ida" value={draft.departure} onChange={value => update('departure', value)} error={errors['departure']} />
+          <TripDateField id="returnDate" label="Volta" value={draft.returnDate} onChange={value => update('returnDate', value)} error={errors['returnDate']} />
         </div>
-        {menuOpen && <nav className="page-width flex flex-col gap-2 pb-4 md:hidden"><Button variant="ghost" onClick={() => scrollTo('conexoes')}>Como chegar</Button><Button variant="travel" onClick={() => scrollTo('destinos')}>Destinos e hospedagem <ArrowRight /></Button></nav>}
-      </header>
-      <main>
-        <section className="page-width enter pb-14 pt-14 text-center md:pb-16 md:pt-16">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-xs font-medium text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary" /> DO BRASIL PARA O EXTRAORDINÁRIO</div>
-          <h1 className="hero-title mx-auto max-w-4xl">Descubra a <span className="text-primary">Patagônia Argentina:</span><br className="hidden md:block" /> Conexões de São Paulo<br className="hidden md:block" /> e Rio de Janeiro</h1>
-          <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-muted-foreground">Grandes paisagens, um roteiro do seu jeito. Encontre a melhor conexão,<br className="hidden md:block" /> escolha seu destino e planeje a viagem que cabe no seu orçamento.</p>
-          <div className="mt-7 flex flex-wrap justify-center gap-3"><Button variant="travel" className="h-12 px-7" onClick={() => scrollTo('destinos')}>Explore os destinos <ArrowRight /></Button><Button variant="outline" className="h-12 rounded-full bg-card px-6" onClick={() => scrollTo('conexoes')}><Plane /> Veja como chegar</Button></div>
-          <div className="mt-7 flex flex-wrap justify-center gap-x-6 gap-y-3 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><Check className="size-3.5 text-primary" /> Saídas de GRU e GIG</span><span className="flex items-center gap-1.5"><Check className="size-3.5 text-primary" /> 4 destinos inesquecíveis</span><span className="flex items-center gap-1.5"><Check className="size-3.5 text-primary" /> Opções para cada orçamento</span></div>
-        </section>
-        <section id="conexoes" className="page-width pb-16">
-          <div className="mb-7 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-            <div><p className="eyebrow mb-2.5 text-primary">A VIAGEM COMEÇA AQUI</p><h2 className="section-title">Do Brasil à Patagônia</h2><p className="mt-2 text-sm text-muted-foreground">Escolha seu ponto de partida. A gente conecta as possibilidades.</p></div>
-            <div className="flex self-start rounded-full border border-border bg-card p-1" aria-label="Aeroporto de partida">
-              <Button variant={origin === 'GRU' ? 'travel' : 'ghost'} className="h-10 rounded-full px-5" aria-pressed={origin === 'GRU'} onClick={() => setOrigin('GRU')}>São Paulo <span className="text-xs opacity-65">GRU</span></Button>
-              <Button variant={origin === 'GIG' ? 'travel' : 'ghost'} className="h-10 rounded-full px-5" aria-pressed={origin === 'GIG'} onClick={() => setOrigin('GIG')}>Rio de Janeiro <span className="text-xs opacity-65">GIG</span></Button>
-            </div>
+        <div className="mt-5 grid gap-x-5 gap-y-5 sm:grid-cols-3 lg:grid-cols-4">
+          {([{ key: 'adults', label: 'Adultos', min: 1 }, { key: 'children', label: 'Crianças', min: 0 }, { key: 'rooms', label: 'Quartos', min: 1 }] as const).map(field => <div key={field.key}><label htmlFor={field.key} className="planner-label">{field.label}</label><Input id={field.key} type="number" min={field.min} step={1} value={draft[field.key]} onChange={e => update(field.key, e.target.value)} className="planner-control" aria-invalid={Boolean(errors[field.key])} aria-describedby={errors[field.key] ? `${field.key}-error` : undefined} />{errors[field.key] && <p id={`${field.key}-error`} className="mt-1.5 text-xs text-destructive">{errors[field.key]}</p>}</div>)}
+          <div className="flex items-end sm:col-span-3 lg:col-span-1"><Button variant="travel" type="submit" className="h-12 w-full px-5">Planejar minha viagem <ArrowRight /></Button></div>
+        </div>
+        {Object.keys(errors).length > 0 && <p role="alert" className="mt-4 text-sm text-destructive">Confira os campos indicados para continuar.</p>}
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><Check className="size-3.5 text-primary" /> Seu roteiro começa aqui, sem compromisso.</span><span className="flex items-center gap-1.5"><Info className="size-3.5" /> Preços e disponibilidade são consultados nos sites de reserva.</span></div>
+      </form>
+
+      {!trip && <div className="py-10 text-center"><p className="flex items-center justify-center gap-2 text-sm text-muted-foreground"><ArrowDown className="size-4 text-primary" /> Uma viagem, novas paisagens.</p><p className="mt-2 text-xs text-muted-foreground">Bariloche · Ushuaia · El Calafate · Puerto Madryn</p></div>}
+      {trip && destination && guidance && <div ref={resultRef} className="result-flow mx-auto mt-9 max-w-4xl space-y-6" aria-live="polite">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-1"><div><p className="eyebrow text-primary">SEU PLANO DE VIAGEM</p><p className="mt-1.5 text-sm text-muted-foreground">{dateLabel(trip.departure)} — {dateLabel(trip.returnDate)} · {trip.adults} {trip.adults === 1 ? 'adulto' : 'adultos'}{trip.children > 0 ? ` · ${trip.children} ${trip.children === 1 ? 'criança' : 'crianças'}` : ''} · {trip.rooms} {trip.rooms === 1 ? 'quarto' : 'quartos'}</p></div><Button variant="ghost" size="sm" onClick={edit} className="text-primary"><Pencil /> Alterar viagem</Button></div>
+        <article className="travel-card overflow-hidden p-4 md:p-5" aria-labelledby="destination-title">
+          <div className="grid gap-5 sm:grid-cols-[220px_1fr] md:grid-cols-[260px_1fr]">
+            <img src={destination.image} alt={`Paisagem de ${destination.name}, Patagônia Argentina`} width={1024} height={768} className="summary-image" />
+            <div className="flex flex-col justify-center px-2 py-2"><p className="eyebrow mb-2 text-primary">02 · SEU DESTINO</p><h2 id="destination-title" className="flex flex-wrap items-center gap-3 text-2xl font-bold">{destination.name}<span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">{destination.code}</span></h2><p className="mb-4 mt-2 text-sm leading-6 text-muted-foreground">{destination.description}</p><div className="flex flex-wrap gap-x-5 gap-y-2 text-xs"><span className="flex items-center gap-1.5"><Leaf className="size-3.5 text-primary" /> Época recomendada: {destination.season}</span><span className="flex items-center gap-1.5"><CalendarDays className="size-3.5 text-primary" /> {destination.nights} sugeridas</span></div><Button variant="link" className="mt-3 h-7 self-start p-0 text-xs" aria-expanded={expanded} aria-controls="destination-details" onClick={() => setExpanded(!expanded)}>{expanded ? 'Ver menos' : 'Ver mais'}{expanded ? <ChevronUp /> : <ChevronDown />}</Button></div>
           </div>
-          <div className="grid gap-5 md:grid-cols-3">
-            <article className="travel-card flex flex-col items-center p-7 text-center"><div className="transport-icon mb-5"><Plane /></div><span className="rounded-full bg-sunshine px-3 py-1 text-[10px] font-semibold text-sunshine-foreground">{origin === 'GRU' ? 'DIRETO · SAZONAL' : 'CONEXÃO · INVERNO'}</span><h3 className="mb-2 mt-3 text-xl font-bold">{origin === 'GRU' ? 'Direto para a neve' : 'Rumo à neve'}</h3><p className="text-sm leading-6 text-muted-foreground">{origin === 'GRU' ? 'No inverno, vá de São Paulo a Bariloche sem escalas, conforme a malha da temporada.' : 'Do Rio a Bariloche via Buenos Aires. Consulte a oferta da temporada antes de reservar.'}</p><div className="mt-5 flex w-full items-center text-sm font-bold"><span>{origin}</span><span className="route-line" /><Plane className="size-4 text-muted-foreground" /><span className="route-line" /><span>BRC</span></div><div className="mt-5 border-t border-border pt-4 text-xs text-muted-foreground">{origin === 'GRU' ? 'Aerolíneas Argentinas · LATAM · GOL' : 'Trecho internacional + Aerolíneas Argentinas'}</div></article>
-            <article className="travel-card flex flex-col items-center p-7 text-center"><div className="transport-icon mb-5"><Plane /></div><span className="rounded-full bg-secondary px-3 py-1 text-[10px] font-semibold text-primary">MAIS POSSIBILIDADES</span><h3 className="mb-2 mt-3 text-xl font-bold">Via Buenos Aires</h3><p className="text-sm leading-6 text-muted-foreground">Uma parada, quatro destinos. Combine seu voo ao país com uma conexão doméstica.</p><div className="mt-5 flex w-full items-center text-sm font-bold"><span>{origin}</span><span className="route-line" /><span className="text-xs text-muted-foreground">AEP / EZE</span><span className="route-line" /><span>Patagônia</span></div><div className="mt-5 border-t border-border pt-4 text-xs text-muted-foreground">Internacional: Aerolíneas · LATAM · GOL<br /><span className="mt-1 inline-block">Doméstico: Aerolíneas Argentinas</span></div></article>
-            <article className="travel-card flex flex-col items-center p-7 text-center"><div className="transport-icon mb-5"><Bus /></div><span className="rounded-full bg-muted px-3 py-1 text-[10px] font-semibold text-muted-foreground">NO SEU RITMO</span><h3 className="mb-2 mt-3 text-xl font-bold">Pela estrada</h3><p className="text-sm leading-6 text-muted-foreground">Voe até Buenos Aires e siga de ônibus. Uma alternativa para quem tem tempo e quer explorar.</p><div className="mt-5 flex w-full items-center text-sm font-bold"><span>Buenos Aires</span><span className="route-line" /><Bus className="size-4 text-muted-foreground" /><span className="route-line" /><span>Sul</span></div><div className="mt-5 border-t border-border pt-4 text-xs text-muted-foreground">Viagens longas · Compare tempo e custo<br /><span className="mt-1 inline-block">Ideal para roteiros com mais dias</span></div></article>
+          {expanded && <div id="destination-details" className="mt-4 border-t border-border px-2 pb-2 pt-4 text-sm leading-6 text-muted-foreground"><p>{destination.code === 'BRC' ? 'O Circuito Chico e o lago Nahuel Huapi são clássicos para conhecer a região. Reserve tempo para os passeios e para explorar o centro.' : destination.code === 'USH' ? 'O Parque Nacional Tierra del Fuego e o Canal Beagle revelam paisagens distintas. Distribua os passeios entre os dias do roteiro.' : destination.code === 'FTE' ? 'El Calafate é uma base para conhecer o Parque Nacional Los Glaciares. Se quiser incluir El Chaltén, planeje dias e deslocamentos adicionais.' : 'Puerto Madryn é uma base para visitar a Península Valdés. Passeios de observação de animais dependem da temporada e das condições de operação.'}</p><p className="mt-2 text-xs">Perfil de orçamento: {destination.budget.toLowerCase()}. A época e a duração sugeridas são referências editoriais, não uma previsão do tempo para sua viagem.</p></div>}
+        </article>
+        <article className="travel-card p-6 md:p-7" aria-labelledby="flight-title">
+          <div className="flex items-center gap-5"><div className="transport-icon"><Plane /></div><div className="min-w-0"><p className="eyebrow mb-2 text-primary">03 · COMO CHEGAR</p><h2 id="flight-title" className="text-xl font-bold">{origins[trip.origin]} <ArrowRight className="mx-1 inline size-4 text-primary" /> {destination.name} ({destination.code})</h2><p className="mt-1 text-xs text-muted-foreground">Orientações de rota · Não são voos disponíveis para suas datas</p></div></div>
+          <div className="mt-5 space-y-3 text-sm leading-6 text-muted-foreground">
+            {guidance.seasonalDirect && <p><span className="font-semibold text-foreground">Diretos sazonais para Bariloche.</span> Em temporadas de inverno, GRU–BRC pode ter operações da Aerolíneas Argentinas, LATAM e GOL. Isso não confirma voos no período escolhido.</p>}
+            <p><span className="font-semibold text-foreground">Via Buenos Aires.</span> {guidance.connection}</p>
+            <p className="flex items-start gap-2 rounded-2xl bg-muted p-3 text-xs leading-5"><Info className="mt-0.5 size-4 shrink-0 text-primary" /><span>Aeroparque (AEP) e Ezeiza (EZE) são aeroportos diferentes. Sua conexão pode exigir traslado terrestre, retirada e novo despacho de bagagem. Confira os aeroportos e reserve tempo extra entre os voos.</span></p>
           </div>
-          <p className="mt-5 flex items-start justify-center gap-2 text-center text-xs leading-5 text-muted-foreground"><Info className="mt-0.5 size-3.5 shrink-0" /> Voos diretos são sazonais. Confira datas e disponibilidade. Conexões entre AEP e EZE podem exigir traslado e tempo extra.</p>
-          <p className="mt-1 text-center text-[10px] text-muted-foreground">Referência: <a href="https://www.latamairlines.com/br/pt/imprensa/noticias/latam-brasil-amplia-oferta-internacional-de-2026-com-mais-voos-p" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">malha sazonal LATAM</a> · <a href="https://viagemeturismo.abril.com.br/mundo/sao-paulo-e-bariloche-serao-ligadas-por-voos-diretos-no-inverno-de-2026/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">conexões de inverno 2026</a></p>
-        </section>
-        <section id="destinos" className="page-width pb-14">
-          <div className="mb-8 text-center"><p className="eyebrow mb-2.5 text-primary">ESCOLHA SUA PRÓXIMA MEMÓRIA</p><h2 className="section-title">Uma Patagônia. Muitos jeitos de viver.</h2><p className="mt-3 text-sm text-muted-foreground">Dos lagos ao fim do mundo, encontre o destino que combina com você.</p></div>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {destinations.map(d => <article key={d.code} className="travel-card flex flex-col p-3.5 text-center"><div className="relative"><img src={d.image} alt={`Paisagem de ${d.name}, Patagônia Argentina`} width={1024} height={768} loading="lazy" className="destination-image" /><span className="absolute right-3 top-3 rounded-full bg-card/95 px-3 py-1.5 text-[11px] font-bold">{d.code}</span></div><div className="flex flex-1 flex-col px-2 pb-2 pt-5"><p className="eyebrow text-[9px] text-primary">{d.tag}</p><h3 className="mb-2 mt-2 text-xl font-bold">{d.name}</h3><p className="min-h-20 text-[13px] leading-6 text-muted-foreground">{d.description}</p><div className="mb-5 mt-4 space-y-2.5 border-t border-border pt-4 text-xs text-muted-foreground"><p className="flex items-center justify-center gap-2"><CalendarDays className="size-3.5" /><span>Estadia sugerida: <strong className="font-semibold text-foreground">{d.nights}</strong></span></p><p className="flex items-center justify-center gap-2"><Leaf className="size-3.5" />{d.season}</p><p className="flex items-center justify-center gap-2"><Compass className="size-3.5" />{d.budget}</p></div><Button asChild variant="booking" className="mt-auto h-11 w-full px-3 text-xs"><a href={bookingUrl(d.query, import.meta.env['VITE_BOOKING_AFFILIATE_ID'])} target="_blank" rel="sponsored noopener noreferrer" aria-label={`Ver hospedagens em ${d.name} na Booking.com`}>Ver hospedagens <ArrowUpRight /></a></Button><p className="mt-2.5 text-[10px] text-muted-foreground">na Booking.com</p></div></article>)}
-          </div>
-          <p className="mt-5 text-center text-xs leading-5 text-muted-foreground">Estadias e perfis de orçamento são sugestões de planejamento, não cotações. Valores variam conforme a época e suas escolhas.</p>
-        </section>
-        <section className="border-y border-border bg-secondary/40 py-9"><div className="page-width flex flex-col items-center justify-between gap-6 md:flex-row"><div className="flex items-center gap-4"><Globe2 className="size-9 shrink-0 text-primary" strokeWidth={1.4} /><div><h2 className="text-lg font-bold">Sua aventura começa com um bom plano.</h2><p className="mt-1 text-sm text-muted-foreground">Defina as datas, compare as conexões e reserve sua estadia com antecedência.</p></div></div><Button variant="travel" className="h-11 shrink-0 px-6" onClick={() => scrollTo('destinos')}>Encontre seu destino <ArrowRight /></Button></div></section>
-      </main>
-      <footer className="page-width py-8"><div className="flex flex-col items-center justify-between gap-4 md:flex-row"><a href="#" className="flex items-center gap-2 font-display text-lg font-extrabold"><Mountain className="size-6 text-primary" />Patagonia<span className="-ml-2 text-primary">_br</span></a><p className="text-xs text-muted-foreground">Feito para brasileiros. Inspirado pela Patagônia.</p><span className="flex items-center gap-1.5 text-xs text-muted-foreground"><MapPin className="size-3.5" /> Argentina, América do Sul</span></div><div className="mt-6 border-t border-border pt-5 text-center text-[10px] leading-5 text-muted-foreground">© 2026 Patagonia_br · Imagens ilustrativas geradas por IA. Ao reservar por links de afiliados habilitados, podemos receber uma comissão, sem custo adicional para você.</div></footer>
-    </>
-  );
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4"><p className="max-w-md text-xs leading-5 text-muted-foreground">Consulte as companhias para confirmar horários, tarifas e disponibilidade nas suas datas.</p><Button asChild variant="outline" className="h-10 rounded-full text-xs"><a href="https://www.aerolineas.com.ar/pt-br" target="_blank" rel="noopener noreferrer">Consultar Aerolíneas Argentinas <ArrowUpRight /></a></Button></div>
+        </article>
+        <article className="travel-card p-6 md:p-7" aria-labelledby="hotel-title">
+          <div className="flex items-start gap-3"><div className="rounded-xl bg-secondary p-3 text-primary"><BedDouble className="size-6" /></div><div><p className="eyebrow mb-2 text-primary">04 · SUA HOSPEDAGEM</p><h2 id="hotel-title" className="text-xl font-bold">Encontre sua estadia em {destination.name}</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">Compare opções para suas datas na Booking.com.</p></div></div>
+          <div className="my-5 flex flex-wrap gap-x-6 gap-y-3 border-y border-border py-4 text-xs text-muted-foreground"><span className="flex items-center gap-2"><CalendarDays className="size-4 text-primary" />{dateLabel(trip.departure)} — {dateLabel(trip.returnDate)}</span><span className="flex items-center gap-2"><Users className="size-4 text-primary" />{trip.adults} {trip.adults === 1 ? 'adulto' : 'adultos'} · {trip.children} {trip.children === 1 ? 'criança' : 'crianças'}</span><span className="flex items-center gap-2"><BedDouble className="size-4 text-primary" />{trip.rooms} {trip.rooms === 1 ? 'quarto' : 'quartos'} · {nights} {nights === 1 ? 'noite' : 'noites'}</span></div>
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div className="max-w-md text-xs leading-5 text-muted-foreground"><p>Preços, opções e disponibilidade serão exibidos na Booking.com. Confira os dados antes de reservar.</p>{trip.children > 0 && <p className="mt-1">Informe a idade de cada criança na Booking.com para obter opções e valores adequados.</p>}</div>{nights > 0 ? <Button asChild variant="booking" className="h-12 shrink-0 px-6"><a href={bookingUrl(destination.query, import.meta.env['VITE_BOOKING_AFFILIATE_ID'], trip)} target="_blank" rel="sponsored noopener noreferrer">Buscar na Booking.com <ArrowUpRight /></a></Button> : <div className="max-w-xs text-xs text-destructive">Para buscar uma estadia com pernoite, escolha uma volta após a ida.</div>}</div>
+          <p className="mt-4 text-[10px] text-muted-foreground">A reserva é concluída no site da Booking.com, em uma nova aba.</p>
+        </article>
+      </div>}
+    </main>
+    <footer className="border-t border-border"><div className="page-width flex flex-col items-center justify-between gap-3 py-6 text-center sm:flex-row sm:text-left"><span className="text-xs text-muted-foreground">© 2026 Patagonia_br · Feito para brasileiros.</span><p className="max-w-xl text-[10px] leading-5 text-muted-foreground">Imagens ilustrativas geradas por IA. Links de afiliados habilitados podem gerar comissão, sem custo adicional para você.</p></div></footer>
+  </>;
 }
