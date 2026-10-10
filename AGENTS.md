@@ -11,3 +11,4 @@
 
 - Keep landing content on the index route with browser-safe destination data in a dedicated module, so travel facts and outbound links share one source.
 - Booking links use a configurable affiliate identifier; omit the identifier until the owner supplies a real one, so no false attribution is claimed.
+- Validate trip input through a shared browser-safe Zod schema before rendering results or building outbound hotel URLs; the page does not query availability or store trips.
