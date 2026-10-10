@@ -8,7 +8,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
-export function TripDateField({ id, label, value, onChange, error }: { id: string; label: string; value: string; onChange: (value: string) => void; error?: string }) {
+export function TripDateField({ id, label, value, onChange, error }: { id: string; label: string; value: string; onChange: (value: string) => void; error?: string | undefined }) {
   const [open, setOpen] = useState(false);
   const parsed = parse(value, 'yyyy-MM-dd', new Date(2000, 0, 1));
   const selected = isValid(parsed) ? parsed : undefined;
@@ -18,7 +18,7 @@ export function TripDateField({ id, label, value, onChange, error }: { id: strin
       <Input id={id} type="date" value={value} onChange={e => onChange(e.target.value)} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} className="planner-control date-input" />
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild><Button variant="ghost" size="icon" type="button" className="absolute right-1 top-1.5 text-primary" aria-label={`Abrir calendário de ${label.toLowerCase()}`}><CalendarDays /></Button></PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="end"><Calendar className="pointer-events-auto" mode="single" locale={calendarLocale} selected={selected} defaultMonth={selected} onSelect={date => { if (date) { onChange(format(date, 'yyyy-MM-dd', { locale: ptBR })); setOpen(false); } }} /></PopoverContent>
+        <PopoverContent className="w-auto p-0" align="end"><Calendar className="pointer-events-auto" mode="single" locale={calendarLocale} selected={selected} {...(selected ? { defaultMonth: selected } : {})} onSelect={date => { if (date) { onChange(format(date, 'yyyy-MM-dd', { locale: ptBR })); setOpen(false); } }} /></PopoverContent>
       </Popover>
     </div>
     {error && <p id={`${id}-error`} className="mt-1.5 text-xs text-destructive">{error}</p>}
