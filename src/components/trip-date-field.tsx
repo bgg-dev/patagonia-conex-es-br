@@ -15,7 +15,7 @@ export function TripDateField({ id, label, value, onChange, error }: { id: strin
   return <div className="min-w-0">
     <label className="planner-label" htmlFor={id}>{label}</label>
     <div className="relative">
-      <Input id={id} type="date" value={value} onChange={e => onChange(e.target.value)} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} className="planner-control date-input" />
+      <Input id={id} type="text" inputMode="numeric" maxLength={10} placeholder="dd/mm/aaaa" value={/^\d{4}-\d{2}-\d{2}$/.test(value) ? value.split('-').reverse().join('/') : value} onChange={e => { const text = e.target.value; onChange(/^\d{2}\/\d{2}\/\d{4}$/.test(text) ? text.split('/').reverse().join('-') : text); }} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} className="planner-control date-input" />
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild><Button variant="ghost" size="icon" type="button" className="absolute right-1 top-1.5 text-primary" aria-label={`Abrir calendário de ${label.toLowerCase()}`}><CalendarDays /></Button></PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="end"><Calendar className="pointer-events-auto" mode="single" locale={calendarLocale} selected={selected} {...(selected ? { defaultMonth: selected } : {})} onSelect={date => { if (date) { onChange(format(date, 'yyyy-MM-dd', { locale: ptBR })); setOpen(false); } }} /></PopoverContent>
